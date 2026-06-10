@@ -146,6 +146,8 @@ uint32_t pet_exec(pet_t* sys, uint32_t micro_seconds);
 void pet_key_down(pet_t* sys, int key_code);
 // send a key-up event
 void pet_key_up(pet_t* sys, int key_code);
+// load a .prg/.bin file (first two bytes are the little-endian load address)
+bool pet_quickload(pet_t* sys, chips_range_t data);
 // take a snapshot, patches pointers to zero, returns snapshot version
 uint32_t pet_save_snapshot(pet_t* sys, pet_t* dst);
 // load a snapshot, returns false if snapshot version doesn't match
@@ -414,6 +416,29 @@ void pet_key_down(pet_t* sys, int key_code) {
 void pet_key_up(pet_t* sys, int key_code) {
     CHIPS_ASSERT(sys && sys->valid);
     kbd_key_up(&sys->kbd, key_code);
+}
+
+bool pet_quickload(pet_t* sys, chips_range_t data) {
+    CHIPS_ASSERT(sys && sys->valid && data.ptr);
+    if (data.size < 2) {
+        return false;
+    }
+    const uint8_t* ptr = (uint8_t*)data.ptr;
+    const uint16_t start_addr = ptr[1]<<8 | ptr[0];
+    ptr += 2;
+    const uint16_t end_addr = start_addr + (data.size - 2);
+    uint16_t addr = start_addr;
+    while (addr < end_addr) {
+        mem_wr(&sys->mem, addr++, *ptr++);
+    }
+
+    // fix up the PET BASIC 4.0 zero-page pointers so that a loaded BASIC
+    // program can be LISTed and RUN (VARTAB, ARYTAB, STREND)
+    mem_wr16(&sys->mem, 0x2A, end_addr);
+    mem_wr16(&sys->mem, 0x2C, end_addr);
+    mem_wr16(&sys->mem, 0x2E, end_addr);
+
+    return true;
 }
 
 static void _pet_init_key_map(pet_t* sys) {
