@@ -52,9 +52,23 @@
     an input pin mask, and returns a (potentially modified) output
     pin mask.
 
+    One tick represents one complete PHI2 cycle. Assert CS for exactly one
+    tick per register access. Reads clear interrupt flags only on port-data
+    accesses, not on DDR or control-register accesses.
+
+    Supported: separate DDR and output registers, mixed-direction port reads,
+    both control-input edge polarities, interrupt flags/enables, manual C2
+    outputs, read-A/write-B handshake outputs and one-cycle pulse outputs.
+    Sub-cycle propagation delays and analog output loading are not modeled.
+    IRQ is active-high in the pin mask (the physical IRQ outputs are active-low).
+
     The control pins, register select and data bus pins share the same
     pin positions as the m6522, so both chips can be ticked with the
     same shared pin mask.
+
+    Reference: MOS MCS6520 datasheet, "Summary of MCS6520 Operation":
+    https://www.zimmers.net/anonftp/pub/cbm/documents/chipdata/6520.zip
+    This version is modified from the initial PET implementation.
 
     ## zlib/libpng license
 
@@ -162,6 +176,7 @@ typedef struct {
     bool c2_in;
     bool c2_out;
     bool c2_triggered;
+    bool c2_pulse;
 } m6520_port_t;
 
 // m6520 state
@@ -192,6 +207,8 @@ void m6520_init(m6520_t* c);
 void m6520_reset(m6520_t* c);
 // tick the m6520
 uint64_t m6520_tick(m6520_t* c, uint64_t pins);
+// preview a register read with current input pins, without advancing or side effects
+uint8_t m6520_peek(const m6520_t* c, uint64_t pins);
 
 #ifdef __cplusplus
 } // extern "C"
@@ -216,6 +233,7 @@ static void _m6520_init_port(m6520_port_t* p) {
     p->c2_in = false;
     p->c2_out = true;
     p->c2_triggered = false;
+    p->c2_pulse = false;
 }
 
 void m6520_init(m6520_t* c) {
@@ -246,6 +264,8 @@ static inline void _m6520_read_port_pins(m6520_t* c, uint64_t pins) {
     c->pb.c1_triggered = (c->pb.c1_in != new_cb1) && (new_cb1 == cb1_pos);
 
     // CA2 / CB2 only trigger when configured as input
+    c->pa.c2_triggered = false;
+    c->pb.c2_triggered = false;
     if (0 == (c->pa.cr & M6520_CR_C2_OUTPUT)) {
         const bool ca2_pos = 0 != (c->pa.cr & M6520_CR_C2_EDGE);
         c->pa.c2_triggered = (c->pa.c2_in != new_ca2) && (new_ca2 == ca2_pos);
@@ -268,6 +288,13 @@ static inline void _m6520_read_port_pins(m6520_t* c, uint64_t pins) {
     if (c->pa.c2_triggered && (0 == (c->pa.cr & M6520_CR_C2_OUTPUT))) { c->pa.cr |= M6520_CR_IRQ2; }
     if (c->pb.c1_triggered) { c->pb.cr |= M6520_CR_IRQ1; }
     if (c->pb.c2_triggered && (0 == (c->pb.cr & M6520_CR_C2_OUTPUT))) { c->pb.cr |= M6520_CR_IRQ2; }
+
+    if (c->pa.c1_triggered && ((c->pa.cr & 0x38) == 0x20)) {
+        c->pa.c2_out = true;
+    }
+    if (c->pb.c1_triggered && ((c->pb.cr & 0x38) == 0x20)) {
+        c->pb.c2_out = true;
+    }
 }
 
 static inline uint64_t _m6520_write_port_pins(m6520_t* c, uint64_t pins) {
@@ -276,9 +303,14 @@ static inline uint64_t _m6520_write_port_pins(m6520_t* c, uint64_t pins) {
     M6520_SET_PAB(pins, c->pa.pins, c->pb.pins);
 
     // CA2 / CB2 output level (CA1/CB1 are input-only)
-    pins &= ~(M6520_CA2|M6520_CB2);
-    if (c->pa.c2_out) { pins |= M6520_CA2; }
-    if (c->pb.c2_out) { pins |= M6520_CB2; }
+    if (c->pa.cr & M6520_CR_C2_OUTPUT) {
+        pins &= ~M6520_CA2;
+        if (c->pa.c2_out) { pins |= M6520_CA2; }
+    }
+    if (c->pb.cr & M6520_CR_C2_OUTPUT) {
+        pins &= ~M6520_CB2;
+        if (c->pb.c2_out) { pins |= M6520_CB2; }
+    }
     return pins;
 }
 
@@ -308,15 +340,26 @@ static inline uint64_t _m6520_update_irq(m6520_t* c, uint64_t pins) {
 
 // update the fixed C2 output level based on the control register
 static inline void _m6520_update_c2_out(m6520_port_t* p) {
+    p->c2_pulse = false;
     if (p->cr & M6520_CR_C2_OUTPUT) {
-        if (p->cr & M6520_CR_C2_MODE) {
-            // manual output mode: C2 follows CR bit 4
-            p->c2_out = 0 != (p->cr & M6520_CR_C2_EDGE);
+        if (p->cr & M6520_CR_C2_EDGE) {
+            // Manual output mode: bit 4 selects manual, bit 3 sets the level.
+            p->c2_out = 0 != (p->cr & M6520_CR_C2_MODE);
         }
-        // (handshake/pulse output modes default the line high)
+        else {
+            p->c2_out = true;
+        }
     }
     else {
         p->c2_out = true;
+    }
+}
+
+// Only read-A and write-B data accesses initiate a C2 handshake or pulse.
+static void _m6520_strobe_c2(m6520_port_t* p) {
+    if ((p->cr & 0x30) == 0x20) {
+        p->c2_out = false;
+        p->c2_pulse = 0 != (p->cr & M6520_CR_C2_MODE);
     }
 }
 
@@ -328,6 +371,7 @@ static uint8_t _m6520_read(m6520_t* c, uint8_t addr) {
                 // read peripheral register A, clears the IRQ flags
                 data = (c->pa.inpr & ~c->pa.ddr) | (c->pa.outr & c->pa.ddr);
                 c->pa.cr &= ~(M6520_CR_IRQ1|M6520_CR_IRQ2);
+                _m6520_strobe_c2(&c->pa);
             }
             else {
                 data = c->pa.ddr;
@@ -370,6 +414,7 @@ static void _m6520_write(m6520_t* c, uint8_t addr, uint8_t data) {
         case M6520_REG_RB:
             if (c->pb.cr & M6520_CR_PORT_SELECT) {
                 c->pb.outr = data;
+                _m6520_strobe_c2(&c->pb);
             }
             else {
                 c->pb.ddr = data;
@@ -383,6 +428,15 @@ static void _m6520_write(m6520_t* c, uint8_t addr, uint8_t data) {
 }
 
 uint64_t m6520_tick(m6520_t* c, uint64_t pins) {
+    CHIPS_ASSERT(c);
+    if (c->pa.c2_pulse) {
+        c->pa.c2_out = true;
+        c->pa.c2_pulse = false;
+    }
+    if (c->pb.c2_pulse) {
+        c->pb.c2_out = true;
+        c->pb.c2_pulse = false;
+    }
     _m6520_read_port_pins(c, pins);
     if (pins & M6520_CS) {
         uint8_t addr = pins & M6520_RS_PINS;
@@ -399,6 +453,13 @@ uint64_t m6520_tick(m6520_t* c, uint64_t pins) {
     pins = _m6520_write_port_pins(c, pins);
     c->pins = pins;
     return pins;
+}
+
+uint8_t m6520_peek(const m6520_t* c, uint64_t pins) {
+    CHIPS_ASSERT(c);
+    m6520_t copy = *c;
+    _m6520_read_port_pins(&copy, pins);
+    return _m6520_read(&copy, pins & M6520_RS_PINS);
 }
 
 #endif /* CHIPS_IMPL */

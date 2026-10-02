@@ -8,6 +8,19 @@ compiles on gcc, clang and cl.exe).
 
 Tests and example code is in a separate repo: https://github.com/floooh/chips-test
 
+PET peripheral regressions in this fork can also be run directly:
+
+1. Compile with `cc -std=c99 -Wall -Wextra -Werror tests/pet_peripherals.c -o /tmp/pet-peripherals`.
+2. Run `/tmp/pet-peripherals` (exit status zero means all assertions passed).
+3. Repeat with `c++ -x c++ -std=c++17 -Wall -Wextra -Werror tests/pet_peripherals.c -o /tmp/pet-peripherals-cxx`.
+4. Run `/tmp/pet-peripherals-cxx` (the same assertions must pass).
+
+The PIA supports GPIO, edge interrupts, and manual/handshake/pulse C2 outputs.
+The VIA still has incomplete shift-register and pulse-output modes. Consumers
+must reject those modes rather than assume that every register is implemented.
+Both chips provide side-effect-free `peek` reads for hosts that separate bus
+data presentation from the completed PHI2-cycle access.
+
 The example emulators, compiled to WebAssembly: https://floooh.github.io/tiny8bit/
 
 For schematics, manuals and research material, see: https://github.com/floooh/emu-info

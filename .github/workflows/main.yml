@@ -3,6 +3,16 @@ name: build_and_test
 on: [push, pull_request]
 
 jobs:
+    pet-peripherals:
+        runs-on: ubuntu-latest
+        steps:
+        - uses: actions/checkout@v4
+        - name: C99 and C++17 peripheral regressions
+          run: |
+            cc -std=c99 -Wall -Wextra -Werror tests/pet_peripherals.c -o /tmp/pet-peripherals
+            /tmp/pet-peripherals
+            c++ -x c++ -std=c++17 -Wall -Wextra -Werror tests/pet_peripherals.c -o /tmp/pet-peripherals-cxx
+            /tmp/pet-peripherals-cxx
     windows:
         runs-on: windows-latest
         steps:
