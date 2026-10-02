@@ -8,5 +8,5 @@ In a bash compatible shell run:
 ./m6502_gen.sh
 ```
 
-This will run Python3 inside a virtual environment and read/write the `chips/z80.h` and
-`chips/m6502.h` headers.
+This will run Python3 inside a virtual environment and read/write the `chips/z80.h`,
+`chips/m6502.h` and `chips/w65c02.h` headers.

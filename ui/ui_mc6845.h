@@ -174,11 +174,11 @@ void ui_mc6845_draw(ui_mc6845_t* win) {
     ImGui::SetNextWindowPos(ImVec2(win->init_x, win->init_y), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(win->init_w, win->init_h), ImGuiCond_FirstUseEver);
     if (ImGui::Begin(win->title, &win->open)) {
-        ImGui::BeginChild("##chip", ImVec2(176, 0), true);
+        ImGui::BeginChild("##chip", ImVec2(176, 0), ImGuiChildFlags_Borders);
         ui_chip_draw(&win->chip, win->mc6845->pins);
         ImGui::EndChild();
         ImGui::SameLine();
-        ImGui::BeginChild("##state", ImVec2(0, 0), true);
+        ImGui::BeginChild("##state", ImVec2(0, 0), ImGuiChildFlags_Borders);
         _ui_mc6845_draw_state(win);
         ImGui::EndChild();
     }

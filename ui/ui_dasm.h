@@ -16,6 +16,7 @@
 
     UI_DASM_USE_Z80
     UI_DASM_USE_M6502
+    UI_DASM_USE_W65C02
 
     Optionally provide the following macros with your own implementation
 
@@ -32,6 +33,7 @@
         - ui_settings.h
         - z80dasm.h     (only if UI_DASM_USE_Z80 is defined)
         - m6502dasm.h   (only if UI_DASM_USE_M6502 is defined)
+        - w65c02dasm.h  (only if UI_DASM_USE_W65C02 is defined)
 
     All strings provided to ui_dasm_init() must remain alive until
     ui_dasm_discard() is called!
@@ -74,6 +76,7 @@ typedef uint8_t (*ui_dasm_read_t)(int layer, uint16_t addr, void* user_data);
 typedef enum {
     UI_DASM_CPUTYPE_Z80 = 0,
     UI_DASM_CPUTYPE_M6502 = 1,
+    UI_DASM_CPUTYPE_W65C02 = 2,
 } ui_dasm_cputype_t;
 
 /* setup parameters for ui_dasm_init()
@@ -133,8 +136,8 @@ void ui_dasm_load_settings(ui_dasm_t* ui, const ui_settings_t* settings);
 #ifndef __cplusplus
 #error "implementation must be compiled as C++"
 #endif
-#if !defined(UI_DASM_USE_Z80) && !defined(UI_DASM_USE_M6502)
-#error "please define UI_DASM_USE_Z80 and/or UI_DASM_USE_M6502"
+#if !defined(UI_DASM_USE_Z80) && !defined(UI_DASM_USE_M6502) && !defined(UI_DASM_USE_W65C02)
+#error "please define UI_DASM_USE_Z80, UI_DASM_USE_M6502 and/or UI_DASM_USE_W65C02"
 #endif
 #include <string.h> /* memset */
 #include <stdio.h>  /* sscanf, sprintf (ImGui memory editor) */
@@ -198,17 +201,25 @@ static void _ui_dasm_out_cb(char c, void* user_data) {
 static void _ui_dasm_disasm(ui_dasm_t* win) {
     win->str_pos = 0;
     win->bin_pos = 0;
-    #if defined(UI_DASM_USE_Z80) && defined(UI_DASM_USE_M6502)
+    #if defined(UI_DASM_USE_Z80)
     if (win->cpu_type == UI_DASM_CPUTYPE_Z80) {
         z80dasm_op(win->cur_addr, _ui_dasm_in_cb, _ui_dasm_out_cb, win);
+        return;
     }
-    else {
-        m6502dasm_op(win->cur_addr, _ui_dasm_in_cb, _ui_dasm_out_cb, win);
+    #endif
+    #if defined(UI_DASM_USE_W65C02)
+    if (win->cpu_type == UI_DASM_CPUTYPE_W65C02) {
+        w65c02dasm_op(win->cur_addr, _ui_dasm_in_cb, _ui_dasm_out_cb, win);
+        return;
     }
+    #endif
+    /* fall back to whichever 6502-family disassembler is compiled in */
+    #if defined(UI_DASM_USE_M6502)
+    m6502dasm_op(win->cur_addr, _ui_dasm_in_cb, _ui_dasm_out_cb, win);
+    #elif defined(UI_DASM_USE_W65C02)
+    w65c02dasm_op(win->cur_addr, _ui_dasm_in_cb, _ui_dasm_out_cb, win);
     #elif defined(UI_DASM_USE_Z80)
     z80dasm_op(win->cur_addr, _ui_dasm_in_cb, _ui_dasm_out_cb, win);
-    #else
-    m6502dasm_op(win->cur_addr, _ui_dasm_in_cb, _ui_dasm_out_cb, win);
     #endif
 }
 
@@ -258,7 +269,8 @@ static bool _ui_dasm_jumptarget(ui_dasm_t* win, uint16_t pc, uint16_t* out_addr)
         }
     }
     else {
-        /* M6502 CPU */
+        /* MOS 6502 / WDC 65C02 CPU */
+        const bool w65c02 = (win->cpu_type == UI_DASM_CPUTYPE_W65C02);
         if (win->bin_pos == 3) {
             uint8_t l, h;
             uint16_t addr;
@@ -275,6 +287,11 @@ static bool _ui_dasm_jumptarget(ui_dasm_t* win, uint16_t pc, uint16_t* out_addr)
                     *out_addr = (h<<8) | l;
                     return true;
             }
+            /* 65C02 BBR0..7 / BBS0..7 (zp,rel), relative offset is the third byte */
+            if (w65c02 && ((win->bin_buf[0] & 0x0F) == 0x0F)) {
+                *out_addr = pc + (int8_t)win->bin_buf[2];
+                return true;
+            }
         }
         else if (win->bin_pos == 2) {
             switch (win->bin_buf[0]) {
@@ -283,6 +300,11 @@ static bool _ui_dasm_jumptarget(ui_dasm_t* win, uint16_t pc, uint16_t* out_addr)
                 case 0x90: case 0xB0: case 0xD0: case 0xF0:
                     *out_addr = pc + (int8_t)win->bin_buf[1];
                     return true;
+            }
+            /* 65C02 BRA */
+            if (w65c02 && (win->bin_buf[0] == 0x80)) {
+                *out_addr = pc + (int8_t)win->bin_buf[1];
+                return true;
             }
         }
     }
@@ -341,10 +363,10 @@ static void _ui_dasm_draw_controls(ui_dasm_t* win) {
 
 /* draw the disassembly column */
 static void _ui_dasm_draw_disasm(ui_dasm_t* win) {
-    ImGui::BeginChild("##dasmbox", ImVec2(0, 0), true);
+    ImGui::BeginChild("##dasmbox", ImVec2(0, 0), ImGuiChildFlags_Borders);
     _ui_dasm_draw_controls(win);
 
-    ImGui::BeginChild("##dasm", ImVec2(0, 0), false);
+    ImGui::BeginChild("##dasm", ImVec2(0, 0));
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0,0));
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0,0));
     const float line_height = ImGui::GetTextLineHeight();
@@ -417,7 +439,7 @@ static void _ui_dasm_draw_disasm(ui_dasm_t* win) {
 
 /* draw the stack */
 static void _ui_dasm_draw_stack(ui_dasm_t* win) {
-    ImGui::BeginChild("##stackbox", ImVec2(72, 0), true);
+    ImGui::BeginChild("##stackbox", ImVec2(72, 0), ImGuiChildFlags_Borders);
     if (ImGui::Button("Clear")) {
         win->stack_num = 0;
     }

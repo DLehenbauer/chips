@@ -249,11 +249,11 @@ void ui_m6522_draw(ui_m6522_t* win) {
     ImGui::SetNextWindowPos(ImVec2(win->init_x, win->init_y), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(win->init_w, win->init_h), ImGuiCond_FirstUseEver);
     if (ImGui::Begin(win->title, &win->open)) {
-        ImGui::BeginChild("##m6522_chip", ImVec2(176, 0), true);
+        ImGui::BeginChild("##m6522_chip", ImVec2(176, 0), ImGuiChildFlags_Borders);
         ui_chip_draw(&win->chip, win->via->pins);
         ImGui::EndChild();
         ImGui::SameLine();
-        ImGui::BeginChild("##m6522_state", ImVec2(0, 0), true);
+        ImGui::BeginChild("##m6522_state", ImVec2(0, 0), ImGuiChildFlags_Borders);
         _ui_m6522_draw_registers(win);
         _ui_m6522_draw_ports(win);
         _ui_m6522_draw_counters(win);

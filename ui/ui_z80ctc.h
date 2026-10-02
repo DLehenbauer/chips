@@ -193,11 +193,11 @@ void ui_z80ctc_draw(ui_z80ctc_t* win) {
     ImGui::SetNextWindowPos(ImVec2(win->init_x, win->init_y), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(win->init_w, win->init_h), ImGuiCond_FirstUseEver);
     if (ImGui::Begin(win->title, &win->open)) {
-        ImGui::BeginChild("##ctc_chip", ImVec2(176, 0), true);
+        ImGui::BeginChild("##ctc_chip", ImVec2(176, 0), ImGuiChildFlags_Borders);
         ui_chip_draw(&win->chip, win->ctc->pins);
         ImGui::EndChild();
         ImGui::SameLine();
-        ImGui::BeginChild("##ctc_vals", ImVec2(0, 0), true);
+        ImGui::BeginChild("##ctc_vals", ImVec2(0, 0), ImGuiChildFlags_Borders);
         _ui_z80ctc_channels(win);
         ImGui::EndChild();
     }

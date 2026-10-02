@@ -11,11 +11,12 @@
     before you include this file in *one* C++ file to create the
     implementation.
 
-    Select the supported CPUs with the following macros (define one
-    or the other, but not both):
+    Select the CPU to debug with one of the following macros (define
+    exactly one):
 
     UI_DBG_USE_Z80
     UI_DBG_USE_M6502
+    UI_DBG_USE_W65C02
 
     Optionally provide the following macros with your own implementation
 
@@ -34,6 +35,8 @@
         - z80dasm.h     (only if UI_DBG_USE_Z80 is defined)
         - m6502.h       (only if UI_DBG_USE_M6502 is defined)
         - m6502dasm.h   (only if UI_DBG_USE_M6502 is defined)
+        - w65c02.h      (only if UI_DBG_USE_W65C02 is defined)
+        - w65c02dasm.h  (only if UI_DBG_USE_W65C02 is defined)
 
     All strings provided to ui_dbg_init() must remain alive until
     ui_dbg_discard() is called!
@@ -60,8 +63,8 @@
 #include <stdbool.h>
 #include <inttypes.h> // PRIu64
 
-#if !defined(UI_DBG_USE_Z80) && !defined(UI_DBG_USE_M6502)
-#error "please define UI_DBG_USE_Z80 or UI_DBG_USE_M6502"
+#if !defined(UI_DBG_USE_Z80) && !defined(UI_DBG_USE_M6502) && !defined(UI_DBG_USE_W65C02)
+#error "please define UI_DBG_USE_Z80, UI_DBG_USE_M6502 or UI_DBG_USE_W65C02"
 #endif
 
 #ifdef __cplusplus
@@ -191,6 +194,8 @@ typedef struct ui_dbg_desc_t {
     z80_t* z80;                 // Z80 CPU to track
     #elif defined(UI_DBG_USE_M6502)
     m6502_t* m6502;             // 6502 CPU to track
+    #elif defined(UI_DBG_USE_W65C02)
+    w65c02_t* w65c02;           // 65C02 CPU to track
     #endif
     uint32_t freq_hz;               // CPU clock frequency in Hz
     uint32_t scanline_ticks;        // length of a raster line in clock cycles
@@ -214,6 +219,8 @@ typedef struct ui_dbg_state_t {
     z80_t* z80;
     #elif defined(UI_DBG_USE_M6502)
     m6502_t* m6502;
+    #elif defined(UI_DBG_USE_W65C02)
+    w65c02_t* w65c02;
     #endif
     bool stopped;
     bool external_debugger_connected;
@@ -451,6 +458,8 @@ static inline uint16_t _ui_dbg_disasm(ui_dbg_t* win, uint16_t addr) {
         z80dasm_op(addr, _ui_dbg_dasm_in_cb, _ui_dbg_dasm_out_cb, win);
     #elif defined(UI_DBG_USE_M6502)
         m6502dasm_op(addr, _ui_dbg_dasm_in_cb, _ui_dbg_dasm_out_cb, win);
+    #elif defined(UI_DBG_USE_W65C02)
+        w65c02dasm_op(addr, _ui_dbg_dasm_in_cb, _ui_dbg_dasm_out_cb, win);
     #endif
     uint16_t next_addr = win->dasm_line.addr;
     win->dasm_line.addr = addr;
@@ -475,6 +484,9 @@ static bool _ui_dbg_is_stepover_op(uint8_t opcode) {
         }
     #elif defined(UI_DBG_USE_M6502)
         /* on 6502, only JSR qualifies */
+        return opcode == 0x20;
+    #elif defined(UI_DBG_USE_W65C02)
+        /* on 65C02, only JSR qualifies */
         return opcode == 0x20;
     #endif
 }
@@ -541,6 +553,31 @@ static bool _ui_dbg_is_controlflow_op(uint8_t opcode0, uint8_t opcode1) {
             case 0x10: case 0x30: case 0x50: case 0x70:
             case 0x90: case 0xB0: case 0xD0: case 0xF0:
                 return true;
+            /* RTI */
+            case 0x40:
+            /* RTS */
+            case 0x60:
+                return true;
+            default:
+                return false;
+        }
+    #elif defined(UI_DBG_USE_W65C02)
+        (void)opcode1;
+        /* BBR0..7 / BBS0..7 (zp,rel bit-branches) */
+        if ((opcode0 & 0x0F) == 0x0F) {
+            return true;
+        }
+        switch (opcode0) {
+            /* BRK */
+            case 0x00:
+            /* JSR/JMP abs */
+            case 0x20: case 0x4C:
+            /* JMP ind / JMP (abs,X) */
+            case 0x6C: case 0x7C:
+            /* relative branch + BRA */
+            case 0x10: case 0x30: case 0x50: case 0x70:
+            case 0x90: case 0xB0: case 0xD0: case 0xF0:
+            case 0x80:
             /* RTI */
             case 0x40:
             /* RTS */
@@ -622,7 +659,7 @@ static void _ui_dbg_history_draw(ui_dbg_t* win) {
     if (ImGui::Begin(win->ui.history.title, &win->ui.history.open)) {
         const float line_height = ImGui::GetTextLineHeight();
         ImGui::SetNextWindowContentSize(ImVec2(0, UI_DBG_NUM_HISTORY_ITEMS * line_height));
-        ImGui::BeginChild("##main", ImGui::GetContentRegionAvail(), false);
+        ImGui::BeginChild("##main", ImGui::GetContentRegionAvail());
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0,0));
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0,0));
         const float glyph_width = ImGui::CalcTextSize("F").x;
@@ -693,6 +730,9 @@ static void _ui_dbg_dbgstate_init(ui_dbg_t* win, ui_dbg_desc_t* desc) {
     #elif defined(UI_DBG_USE_M6502)
         CHIPS_ASSERT(desc->m6502);
         dbg->m6502 = desc->m6502;
+    #elif defined(UI_DBG_USE_W65C02)
+        CHIPS_ASSERT(desc->w65c02);
+        dbg->w65c02 = desc->w65c02;
     #endif
     dbg->delete_breakpoint_index = -1;
 }
@@ -722,6 +762,10 @@ static int _ui_dbg_eval_op_breakpoints(ui_dbg_t* win, int trap_id, uint16_t pc) 
                     trap_id = UI_DBG_STEP_TRAPID;
                 }
                 #elif defined(UI_DBG_USE_M6502)
+                if (pc == win->dbg.stepover_pc) {
+                    trap_id = UI_DBG_STEP_TRAPID;
+                }
+                #elif defined(UI_DBG_USE_W65C02)
                 if (pc == win->dbg.stepover_pc) {
                     trap_id = UI_DBG_STEP_TRAPID;
                 }
@@ -797,6 +841,10 @@ static int _ui_dbg_eval_tick_breakpoints(ui_dbg_t* win, int trap_id, uint64_t pi
                         if (M6502_IRQ & rising_pins) {
                             trap_id = UI_DBG_BP_BASE_TRAPID + i;
                         }
+                    #elif defined(UI_DBG_USE_W65C02)
+                        if (W65C02_IRQ & rising_pins) {
+                            trap_id = UI_DBG_BP_BASE_TRAPID + i;
+                        }
                     #endif
                     break;
 
@@ -807,6 +855,10 @@ static int _ui_dbg_eval_tick_breakpoints(ui_dbg_t* win, int trap_id, uint64_t pi
                         }
                     #elif defined(UI_DBG_USE_M6502)
                         if (M6502_NMI & rising_pins) {
+                            trap_id = UI_DBG_BP_BASE_TRAPID + i;
+                        }
+                    #elif defined(UI_DBG_USE_W65C02)
+                        if (W65C02_NMI & rising_pins) {
                             trap_id = UI_DBG_BP_BASE_TRAPID + i;
                         }
                     #endif
@@ -997,7 +1049,7 @@ static void _ui_dbg_bp_draw(ui_dbg_t* win) {
         _ui_dbg_bp_draw_delete_all_modal(win, "Delete All?");
         int del_bp_index = -1;
         ImGui::Separator();
-        ImGui::BeginChild("##bp_list", ImVec2(0, 0), false);
+        ImGui::BeginChild("##bp_list", ImVec2(0, 0));
         for (int i = 0; i < win->dbg.num_breakpoints; i++) {
             ImGui::PushID(i);
             ui_dbg_breakpoint_t* bp = &win->dbg.breakpoints[i];
@@ -1177,6 +1229,13 @@ static void _ui_dbg_heatmap_record_tick(ui_dbg_t* win, uint64_t pins) {
         } else {
             win->heatmap.items[addr].state |= UI_DBG_HEATMAP_ITEM_WRITE;
         }
+    #elif defined(UI_DBG_USE_W65C02)
+        const uint16_t addr = W65C02_GET_ADDR(pins);
+        if (0 != (pins & W65C02_RW)) {
+            win->heatmap.items[addr].state |= UI_DBG_HEATMAP_ITEM_READ;
+        } else {
+            win->heatmap.items[addr].state |= UI_DBG_HEATMAP_ITEM_WRITE;
+        }
     #endif
 }
 
@@ -1268,7 +1327,7 @@ static void _ui_dbg_heatmap_draw(ui_dbg_t* win) {
         if (ImGui::IsItemHovered() && (hm->autoclear_interval == 0)) {
             ImGui::SetTooltip("Slide to >0 to automatically\nclear every Nth frames.");
         }
-        ImGui::BeginChild("##tex", ImVec2(0, 0), true, ImGuiWindowFlags_HorizontalScrollbar);
+        ImGui::BeginChild("##tex", ImVec2(0, 0), ImGuiChildFlags_Borders, ImGuiWindowFlags_HorizontalScrollbar);
         ImVec2 screen_pos = ImGui::GetCursorScreenPos();
         ImVec2 mouse_pos = ImGui::GetMousePos();
         float w = (float) (hm->scale * hm->tex_width);
@@ -1600,6 +1659,38 @@ void _ui_dbg_draw_regs(ui_dbg_t* win) {
             ImGui::Text("%s", p_str);
             ImGui::EndTable();
         }
+    #elif defined(UI_DBG_USE_W65C02)
+        w65c02_t* c = win->dbg.w65c02;
+        if (ImGui::BeginTable("##reg_columns", 7)) {
+            for (int i = 0; i < 5; i++) {
+                ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 36);
+            }
+            ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 64);
+            ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 72);
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            w65c02_set_a(c, ui_util_input_u8("A", w65c02_a(c))); ImGui::TableNextColumn();
+            w65c02_set_x(c, ui_util_input_u8("X", w65c02_x(c))); ImGui::TableNextColumn();
+            w65c02_set_y(c, ui_util_input_u8("Y", w65c02_y(c))); ImGui::TableNextColumn();
+            w65c02_set_s(c, ui_util_input_u8("S", w65c02_s(c))); ImGui::TableNextColumn();
+            w65c02_set_p(c, ui_util_input_u8("P", w65c02_p(c))); ImGui::TableNextColumn();
+            w65c02_set_pc(c, ui_util_input_u16("PC", w65c02_pc(c))); ImGui::TableNextColumn();
+            const uint8_t p = w65c02_p(c);
+            char p_str[9] = {
+                (p & W65C02_NF) ? 'N':'-',
+                (p & W65C02_VF) ? 'V':'-',
+                (p & W65C02_XF) ? 'X':'-',
+                (p & W65C02_BF) ? 'B':'-',
+                (p & W65C02_DF) ? 'D':'-',
+                (p & W65C02_IF) ? 'I':'-',
+                (p & W65C02_ZF) ? 'Z':'-',
+                (p & W65C02_CF) ? 'C':'-',
+                0,
+            };
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("%s", p_str);
+            ImGui::EndTable();
+        }
     #endif
     ImGui::Separator();
 }
@@ -1779,7 +1870,7 @@ static bool _ui_dbg_line_array_needs_update(ui_dbg_t* win, uint16_t addr) {
 static void _ui_dbg_draw_main(ui_dbg_t* win) {
     const float line_height = ImGui::GetTextLineHeight();
     ImGui::SetNextWindowContentSize(ImVec2(0, UI_DBG_NUM_LINES * line_height));
-    ImGui::BeginChild("##main", ImGui::GetContentRegionAvail(), false);
+    ImGui::BeginChild("##main", ImGui::GetContentRegionAvail());
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0,0));
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0,0));
     const float glyph_width = ImGui::CalcTextSize("F").x;
@@ -2041,6 +2132,8 @@ void ui_dbg_tick(ui_dbg_t* win, uint64_t pins) {
     // evaluate per-op breakpoints
     #if defined(UI_DBG_USE_M6502)
         const bool new_op = pins & M6502_SYNC;
+    #elif defined(UI_DBG_USE_W65C02)
+        const bool new_op = pins & W65C02_SYNC;
     #elif defined(UI_DBG_USE_Z80)
         const bool new_op = z80_opdone(win->dbg.z80);
     #endif

@@ -163,11 +163,11 @@ void ui_z80_draw(ui_z80_t* win) {
     ImGui::SetNextWindowPos(ImVec2(win->init_x, win->init_y), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(win->init_w, win->init_h), ImGuiCond_FirstUseEver);
     if (ImGui::Begin(win->title, &win->open)) {
-        ImGui::BeginChild("##z80_chip", ImVec2(176, 0), true);
+        ImGui::BeginChild("##z80_chip", ImVec2(176, 0), ImGuiChildFlags_Borders);
         ui_chip_draw(&win->chip, win->cpu->pins);
         ImGui::EndChild();
         ImGui::SameLine();
-        ImGui::BeginChild("##z80_regs", ImVec2(0, 0), true);
+        ImGui::BeginChild("##z80_regs", ImVec2(0, 0), ImGuiChildFlags_Borders);
         _ui_z80_regs(win);
         ImGui::EndChild();
     }

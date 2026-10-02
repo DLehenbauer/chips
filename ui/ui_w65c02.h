@@ -1,8 +1,8 @@
 #pragma once
 /*#
-    # ui_m6502.h
+    # ui_w65c02.h
 
-    Debug visualization UI for m6502.h
+    Debug visualization UI for w65c02.h
 
     Do this:
     ~~~C
@@ -19,18 +19,18 @@
         your own assert macro (default: assert(c))
 
     Include the following headers before the including the *declaration*:
-        - m6502.h
+        - w65c02.h
         - ui_chip.h
 
     Include the following headers before including the *implementation*:
         - imgui.h
-        - m6502.h
+        - w65c02.h
         - ui_chip.h
         - ui_util.h
         - ui_settings.h
 
-    All strings provided to ui_m6502_init() must remain alive until
-    ui_m6502_discard() is called!
+    All strings provided to ui_w65c02_init() must remain alive until
+    ui_w65c02_discard() is called!
 
     ## zlib/libpng license
 
@@ -57,34 +57,34 @@
 extern "C" {
 #endif
 
-/* setup parameters for ui_m6502_init()
-    NOTE: all string data must remain alive until ui_m6502_discard()!
+/* setup parameters for ui_w65c02_init()
+    NOTE: all string data must remain alive until ui_w65c02_discard()!
 */
 typedef struct {
     const char* title;          /* window title */
-    m6502_t* cpu;               /* m6502_t instance to track */
+    w65c02_t* cpu;              /* w65c02_t instance to track */
     int x, y;                   /* initial window position */
     int w, h;                   /* initial window width and height */
     bool open;                  /* initial open state */
     ui_chip_desc_t chip_desc;   /* chips visualization desc */
-} ui_m6502_desc_t;
+} ui_w65c02_desc_t;
 
 typedef struct {
     const char* title;
-    m6502_t* cpu;
+    w65c02_t* cpu;
     float init_x, init_y;
     float init_w, init_h;
     bool open;
     bool last_open;
     bool valid;
     ui_chip_t chip;
-} ui_m6502_t;
+} ui_w65c02_t;
 
-void ui_m6502_init(ui_m6502_t* win, const ui_m6502_desc_t* desc);
-void ui_m6502_discard(ui_m6502_t* win);
-void ui_m6502_draw(ui_m6502_t* win);
-void ui_m6502_save_settings(ui_m6502_t* win, ui_settings_t* settings);
-void ui_m6502_load_settings(ui_m6502_t* win, const ui_settings_t* settings);
+void ui_w65c02_init(ui_w65c02_t* win, const ui_w65c02_desc_t* desc);
+void ui_w65c02_discard(ui_w65c02_t* win);
+void ui_w65c02_draw(ui_w65c02_t* win);
+void ui_w65c02_save_settings(ui_w65c02_t* win, ui_settings_t* settings);
+void ui_w65c02_load_settings(ui_w65c02_t* win, const ui_settings_t* settings);
 
 #ifdef __cplusplus
 } /* extern "C" */
@@ -101,11 +101,11 @@ void ui_m6502_load_settings(ui_m6502_t* win, const ui_settings_t* settings);
     #define CHIPS_ASSERT(c) assert(c)
 #endif
 
-void ui_m6502_init(ui_m6502_t* win, const ui_m6502_desc_t* desc) {
+void ui_w65c02_init(ui_w65c02_t* win, const ui_w65c02_desc_t* desc) {
     CHIPS_ASSERT(win && desc);
     CHIPS_ASSERT(desc->title);
     CHIPS_ASSERT(desc->cpu);
-    memset(win, 0, sizeof(ui_m6502_t));
+    memset(win, 0, sizeof(ui_w65c02_t));
     win->title = desc->title;
     win->cpu = desc->cpu;
     win->init_x = (float) desc->x;
@@ -117,45 +117,34 @@ void ui_m6502_init(ui_m6502_t* win, const ui_m6502_desc_t* desc) {
     ui_chip_init(&win->chip, &desc->chip_desc);
 }
 
-void ui_m6502_discard(ui_m6502_t* win) {
+void ui_w65c02_discard(ui_w65c02_t* win) {
     CHIPS_ASSERT(win && win->valid);
     win->valid = false;
 }
 
-static void _ui_m6502_regs(ui_m6502_t* win) {
-    m6502_t* cpu = win->cpu;
+static void _ui_w65c02_regs(ui_w65c02_t* win) {
+    w65c02_t* cpu = win->cpu;
     ImGui::Text("A:  %02X", cpu->A);
     ImGui::Text("X:  %02X", cpu->X);
     ImGui::Text("Y:  %02X", cpu->Y);
     ImGui::Text("S:  %02X", cpu->S);
     const uint8_t f = cpu->P;
     char f_str[9] = {
-        (f & M6502_NF) ? 'N':'-',
-        (f & M6502_VF) ? 'V':'-',
-        (f & M6502_XF) ? 'X':'-',
-        (f & M6502_BF) ? 'B':'-',
-        (f & M6502_DF) ? 'D':'-',
-        (f & M6502_IF) ? 'I':'-',
-        (f & M6502_ZF) ? 'Z':'-',
-        (f & M6502_CF) ? 'C':'-',
+        (f & W65C02_NF) ? 'N':'-',
+        (f & W65C02_VF) ? 'V':'-',
+        (f & W65C02_XF) ? 'X':'-',
+        (f & W65C02_BF) ? 'B':'-',
+        (f & W65C02_DF) ? 'D':'-',
+        (f & W65C02_IF) ? 'I':'-',
+        (f & W65C02_ZF) ? 'Z':'-',
+        (f & W65C02_CF) ? 'C':'-',
         0
     };
     ImGui::Text("P:  %02X %s", f, f_str);
     ImGui::Text("PC: %04X", cpu->PC);
-    ImGui::Separator();
-    ImGui::Text("6510 I/O Port:");
-    ui_util_b8("  DDR:    ", cpu->io_ddr);
-    ui_util_b8("  Input:  ", cpu->io_inp);
-    ui_util_b8("  Output: ", cpu->io_out);
-    ui_util_b8("  Drive:  ", cpu->io_drive);
-    ui_util_b8("  Float:  ", cpu->io_floating);
-    ui_util_b8("  Pullup: ", cpu->io_pullup);
-    ui_util_b8("  Pins:   ", cpu->io_pins);
-    ImGui::Separator();
-    ImGui::Text("BCD: %s", cpu->bcd_enabled ? "enabled":"disabled");
 }
 
-void ui_m6502_draw(ui_m6502_t* win) {
+void ui_w65c02_draw(ui_w65c02_t* win) {
     CHIPS_ASSERT(win && win->valid && win->cpu);
     ui_util_handle_window_open_dirty(&win->open, &win->last_open);
     if (!win->open) {
@@ -164,23 +153,23 @@ void ui_m6502_draw(ui_m6502_t* win) {
     ImGui::SetNextWindowPos(ImVec2(win->init_x, win->init_y), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(win->init_w, win->init_h), ImGuiCond_FirstUseEver);
     if (ImGui::Begin(win->title, &win->open)) {
-        ImGui::BeginChild("##m6502_chip", ImVec2(176, 0), ImGuiChildFlags_Borders);
+        ImGui::BeginChild("##w65c02_chip", ImVec2(176, 0), ImGuiChildFlags_Borders);
         ui_chip_draw(&win->chip, win->cpu->PINS);
         ImGui::EndChild();
         ImGui::SameLine();
-        ImGui::BeginChild("##m6502_regs", ImVec2(0, 0), ImGuiChildFlags_Borders);
-        _ui_m6502_regs(win);
+        ImGui::BeginChild("##w65c02_regs", ImVec2(0, 0), ImGuiChildFlags_Borders);
+        _ui_w65c02_regs(win);
         ImGui::EndChild();
     }
     ImGui::End();
 }
 
-void ui_m6502_save_settings(ui_m6502_t* win, ui_settings_t* settings) {
+void ui_w65c02_save_settings(ui_w65c02_t* win, ui_settings_t* settings) {
     CHIPS_ASSERT(win && settings);
     ui_settings_add(settings, win->title, win->open);
 }
 
-void ui_m6502_load_settings(ui_m6502_t* win, const ui_settings_t* settings) {
+void ui_w65c02_load_settings(ui_w65c02_t* win, const ui_settings_t* settings) {
     CHIPS_ASSERT(win && settings);
     win->open = ui_settings_isopen(settings, win->title);
 }

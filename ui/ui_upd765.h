@@ -244,11 +244,11 @@ void ui_upd765_draw(ui_upd765_t* win) {
     ImGui::SetNextWindowPos(ImVec2(win->init_x, win->init_y), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(win->init_w, win->init_h), ImGuiCond_FirstUseEver);
     if (ImGui::Begin(win->title, &win->open)) {
-        ImGui::BeginChild("##chip", ImVec2(176, 0), true);
+        ImGui::BeginChild("##chip", ImVec2(176, 0), ImGuiChildFlags_Borders);
         ui_chip_draw(&win->chip, win->upd765->pins);
         ImGui::EndChild();
         ImGui::SameLine();
-        ImGui::BeginChild("##state", ImVec2(0, 0), true);
+        ImGui::BeginChild("##state", ImVec2(0, 0), ImGuiChildFlags_Borders);
         _ui_upd765_draw_state(win);
         ImGui::EndChild();
     }

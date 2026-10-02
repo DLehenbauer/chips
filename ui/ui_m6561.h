@@ -247,11 +247,11 @@ void ui_m6561_draw(ui_m6561_t* win) {
     ImGui::SetNextWindowPos(ImVec2(win->init_x, win->init_y), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(win->init_w, win->init_h), ImGuiCond_FirstUseEver);
     if (ImGui::Begin(win->title, &win->open)) {
-        ImGui::BeginChild("##m6561_chip", ImVec2(176, 0), true);
+        ImGui::BeginChild("##m6561_chip", ImVec2(176, 0), ImGuiChildFlags_Borders);
         ui_chip_draw(&win->chip, win->vic->pins);
         ImGui::EndChild();
         ImGui::SameLine();
-        ImGui::BeginChild("##m6561_state", ImVec2(0, 0), true);
+        ImGui::BeginChild("##m6561_state", ImVec2(0, 0), ImGuiChildFlags_Borders);
         ImGui::Checkbox("Debug Visualization", &win->vic->debug_vis);
         _ui_m6561_draw_hwcolors();
         _ui_m6561_draw_registers(win);

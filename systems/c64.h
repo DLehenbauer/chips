@@ -47,14 +47,14 @@
         branchwrap:     ok
         cia1pb6:        ok
         cia1pb7:        ok
-        cia1ta:         FAIL (OK, CIA sysclock not implemented)
+        cia1ta:         ok
         cia1tab:        ok
-        cia1tb:         FAIL (OK, CIA sysclock not implemented)
+        cia1tb:         ok
         cia1tb123:      ok
         cia2pb6:        ok
         cia2pb7:        ok
-        cia2ta:         FAIL (OK, CIA sysclock not implemented)
-        cia2tb:         FAIL (OK, CIA sysclock not implemented)
+        cia2ta:         ok
+        cia2tb:         ok
         cntdef:         ok
         cnto2:          ok
         cpuport:        ok
@@ -66,7 +66,7 @@
         loadth:         ok
         mmu:            ok
         mmufetch:       ok
-        nmi:            FAIL (1 error at 00/5)
+        nmi:            ok
         oneshot:        ok
         trap1..17:      ok
 
@@ -76,25 +76,23 @@
         - all green, expect cia15.prg, which tests the CIA TOD clock,
           which isn't implemented
 
-    cia-timer/cia-timer-oldcias.prg:
-        - left side (CIA-1, IRQ) all green, right side (CIA-2, NMI) some red
+    cia-timer/cia-timer-oldcias.prg: green
 
-    ciatimer/dd0dtest/dd0dtest.prg (NMI related):
-        - some errors
+    dd0dtest/dd0dtest.prg: green
 
     irqdelay:   all green
 
     mirrors/ciamirrors.prg: green
 
     reload0:
-        reload0a.prg:   red
-        reload0b.prg:   red
+        reload0a.prg:   green
+        reload0b.prg:   green
 
     shiftregister:
         cia-icr-test-continues-old.prg: green
         cia-icr-test-oneshot-old.prg: green
-        cia-icr-test2-continues.prg: some red
-        cia-icr-test2-oneshot.prg: some red
+        cia-icr-test2-continues.prg: some red (expected: old vs new CIA)
+        cia-icr-test2-oneshot.prg: some red (expected: old vs new CIA)
         cia-sp-test-continues-old.prg: much red (ok, CIA SP not implemented)
         cia-sp-test-oneshot-old.prg: much red (ok, CIA SP not implemented)
 
@@ -104,7 +102,7 @@
 
     branchquirk:
         branchquirk-old.prg:    green
-        branchquirk-nmiold.prg: red
+        branchquirk-nmiold.prg: green
 
     cia-int:
         cia-int-irq.prg:    green??
@@ -120,9 +118,9 @@
     irqdma: (takes a long time)
         all fail?
 
-    irqdummy/irqdummy.prg:  green
+    irqdummy/irqdummy.prg: green
 
-    irqnmi/irqnmi-old.prg: left (irq) green,right (nmi) red
+    irqnmi/irqnmi-old.prg: green
 
     VICII:
 
