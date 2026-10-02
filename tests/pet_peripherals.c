@@ -104,6 +104,8 @@ static void test_via(void) {
     }
     m6522_tick(&v, inputs);
     assert((v.intr.ifr & 0xC0) == 0xC0 && (v.pins & M6522_IRQ));
+    via_access(&v, 13, 0x80, false);
+    assert((v.intr.ifr & 0xC0) == 0xC0);
     via_access(&v, 14, 0x40, false);
     assert((v.intr.ifr & 0x40) && !(v.intr.ifr & 0x80) && !(v.pins & M6522_IRQ));
     via_access(&v, 14, 0xC0, false);
@@ -138,6 +140,21 @@ static void test_via(void) {
     via_access(&v, 13, 0x7F, false);
     m6522_tick(&v, inputs);
     assert(!(v.intr.ifr & 0x01));
+
+    m6522_reset(&v);
+    for (int i = 0; i < 20; ++i) {
+        m6522_tick(&v, inputs);
+        assert(!(v.intr.ifr & 0x60));
+    }
+    via_access(&v, 4, 0xFF, false);
+    via_access(&v, 5, 0xFF, false);
+    via_access(&v, 8, 0xFF, false);
+    via_access(&v, 9, 0xFF, false);
+    assert(!(v.intr.ifr & 0x60));
+    for (int i = 0; i < 100; ++i) {
+        m6522_tick(&v, inputs);
+        assert(!(v.intr.ifr & 0x60));
+    }
 }
 
 int main(void) {

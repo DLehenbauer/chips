@@ -389,8 +389,9 @@ static void _m6522_init_timer(m6522_timer_t* t, bool is_reset) {
     if (!is_reset) {
         t->latch = 0xFFFF;
         t->counter = 0;
-        t->t_bit = false;
     }
+    /* Reset disables one-shot interrupts until the counter is loaded. */
+    t->t_bit = true;
     t->t_out = false;
     t->pip = 0;
 }
@@ -538,10 +539,8 @@ static inline void _m6522_write_ier(m6522_t* c, uint8_t data) {
 }
 
 static inline void _m6522_write_ifr(m6522_t* c, uint8_t data) {
-    if (data & M6522_IRQ_ANY) {
-        data = 0x7F;
-    }
-    _m6522_clear_intr(c, data);
+    /* Bit 7 is an IRQ summary, not a writable interrupt flag. */
+    _m6522_clear_intr(c, data & 0x7F);
 }
 
 /*
@@ -556,12 +555,13 @@ static void _m6522_tick_t1(m6522_t* c) {
     m6522_timer_t* t = &c->t1;
 
     /* decrement counter? */
-    if (_M6522_PIP_TEST(t->pip, M6522_PIP_TIMER_COUNT, 0)) {
+    const bool counted = _M6522_PIP_TEST(t->pip, M6522_PIP_TIMER_COUNT, 0);
+    if (counted) {
         t->counter--;
     }
 
     /* timer underflow? */
-    t->t_out = (0xFFFF == t->counter);
+    t->t_out = counted && (0xFFFF == t->counter);
     if (t->t_out) {
         /* continuous or oneshot mode? */
         if (M6522_ACR_T1_CONTINUOUS(c)) {
@@ -591,20 +591,23 @@ static void _m6522_tick_t1(m6522_t* c) {
 
 static void _m6522_tick_t2(m6522_t* c, uint64_t pins) {
     m6522_timer_t* t = &c->t2;
+    bool counted = false;
 
     /* either decrement on PB6, or on tick */
     if (M6522_ACR_T2_COUNT_PB6(c)) {
         /* count falling edge of PB6 */
         if (M6522_PB6 & (~pins & (pins ^ c->pins))) {
             t->counter--;
+            counted = true;
         }
     }
     else if (_M6522_PIP_TEST(t->pip, M6522_PIP_TIMER_COUNT, 0)) {
         t->counter--;
+        counted = true;
     }
 
     /* underflow? */
-    t->t_out = (0xFFFF == t->counter);
+    t->t_out = counted && (0xFFFF == t->counter);
     if (t->t_out) {
         /* t2 is always oneshot */
         if (!t->t_bit) {
