@@ -20,6 +20,9 @@ The VIA still has incomplete shift-register and pulse-output modes. Consumers
 must reject those modes rather than assume that every register is implemented.
 Both chips provide side-effect-free `peek` reads for hosts that separate bus
 data presentation from the completed PHI2-cycle access.
+T2 pulse counting samples resolved PB6 levels after DDR/output-latch selection,
+not raw external levels or the optional port input latch. Stable output pins
+do not generate repeated pulses, even when external levels disagree.
 
 The example emulators, compiled to WebAssembly: https://floooh.github.io/tiny8bit/
 

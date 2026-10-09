@@ -490,7 +490,9 @@ static inline uint8_t _m6522_merge_pb7(m6522_t* c, uint8_t data) {
 
 static inline uint64_t _m6522_write_port_pins(m6522_t* c, uint64_t pins) {
     c->pa.pins = (c->pa.inpr & ~c->pa.ddr) | (c->pa.outr & c->pa.ddr);
-    c->pb.pins = _m6522_merge_pb7(c, (c->pb.inpr & ~c->pb.ddr) | (c->pb.outr & c->pb.ddr));
+    /* PB6 pulse counting observes live pins, not the optional input latch. */
+    const uint8_t pb_inputs = M6522_GET_PB(pins);
+    c->pb.pins = _m6522_merge_pb7(c, (pb_inputs & ~c->pb.ddr) | (c->pb.outr & c->pb.ddr));
     M6522_SET_PAB(pins, c->pa.pins, c->pb.pins);
     if (M6522_PCR_CA2_OUTPUT(c)) {
         pins &= ~M6522_CA2;
@@ -682,9 +684,10 @@ static uint64_t _m6522_tick(m6522_t* c, uint64_t pins) {
     _m6522_read_port_pins(c, pins);
     _m6522_update_cab(c);
     _m6522_tick_t1(c);
+    /* Compare resolved PB6 levels across ticks, including output-driven pins. */
+    pins = _m6522_write_port_pins(c, pins);
     _m6522_tick_t2(c, pins);
     pins = _m6522_update_irq(c, pins);
-    pins = _m6522_write_port_pins(c, pins);
     _m6522_tick_pipeline(c);
     return pins;
 }
